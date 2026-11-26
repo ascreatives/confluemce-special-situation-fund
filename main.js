@@ -1,5 +1,5 @@
 const metrics = [
-  ["USD 10M", "Target fund size"],
+  ["USD 25M", "Target fund size"],
   ["AUD 250,000", "Minimum investment allocation"],
   ["10% p.a.", "Target preferred return, non-guaranteed"],
   ["1–3 yrs", "Target holding & liquidity horizon"],
@@ -224,6 +224,7 @@ function initializeAutoSlider(slider, track, getVisibleSlideCount, interval) {
   let transitionTimer = 0;
   let isTransitioning = false;
   let isHovered = false;
+  let isInViewport = false;
 
   function prefersReducedMotion() {
     return Boolean(reducedMotionQuery && reducedMotionQuery.matches);
@@ -254,7 +255,7 @@ function initializeAutoSlider(slider, track, getVisibleSlideCount, interval) {
   function updateAutoplay() {
     window.clearInterval(autoplayTimer);
     autoplayTimer = 0;
-    if (slides.length <= visibleSlides || prefersReducedMotion() || isHovered || document.hidden) {
+    if (slides.length <= visibleSlides || prefersReducedMotion() || isHovered || !isInViewport || document.hidden) {
       return;
     }
     autoplayTimer = window.setInterval(advance, interval);
@@ -354,6 +355,17 @@ function initializeAutoSlider(slider, track, getVisibleSlideCount, interval) {
   }
 
   rebuild();
+
+  if (typeof IntersectionObserver === "function") {
+    const sliderObserver = new IntersectionObserver((entries) => {
+      isInViewport = entries.some((entry) => entry.isIntersecting);
+      updateAutoplay();
+    }, { threshold: 0.12 });
+    sliderObserver.observe(slider);
+  } else {
+    isInViewport = true;
+    updateAutoplay();
+  }
 }
 
 function getCompanyVisibleSlides() {
@@ -665,4 +677,286 @@ function initializePageMotion() {
   });
 }
 
-initializePageMotion();
+function splitTextForReveal(element) {
+  if (!element || element.dataset.wordsSplit === "true") {
+    return;
+  }
+
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  while (walker.nextNode()) {
+    if (walker.currentNode.textContent.trim()) {
+      textNodes.push(walker.currentNode);
+    }
+  }
+
+  textNodes.forEach((textNode) => {
+    const fragment = document.createDocumentFragment();
+    textNode.textContent.split(/(\s+)/).forEach((token) => {
+      if (!token) return;
+      if (/^\s+$/.test(token)) {
+        fragment.appendChild(document.createTextNode(token));
+        return;
+      }
+      const line = document.createElement("span");
+      line.className = "split-line";
+      const word = document.createElement("span");
+      word.className = "split-word";
+      const inner = document.createElement("span");
+      inner.className = "split-word-inner";
+      inner.textContent = token;
+      word.appendChild(inner);
+      line.appendChild(word);
+      fragment.appendChild(line);
+    });
+    textNode.replaceWith(fragment);
+  });
+  element.dataset.wordsSplit = "true";
+}
+
+function initializePremiumMotion() {
+  if (reducedMotionQuery?.matches || typeof window.gsap === "undefined" || typeof window.ScrollTrigger === "undefined") {
+    initializePageMotion();
+    return;
+  }
+
+  const gsap = window.gsap;
+  gsap.registerPlugin(window.ScrollTrigger);
+
+  let lenis = null;
+  if (typeof window.Lenis === "function") {
+    lenis = new window.Lenis({
+      duration: 1.05,
+      lerp: 0.075,
+      smoothWheel: true,
+      touchMultiplier: 1.15,
+    });
+
+    lenis.on("scroll", window.ScrollTrigger.update);
+    gsap.ticker.add((time) => lenis.raf(time * 1000));
+    gsap.ticker.lagSmoothing(0);
+  }
+
+  const animatedSections = document.querySelectorAll([
+    ".hero",
+    ".metrics",
+    ".overview",
+    ".market",
+    ".strategy-band",
+    ".track-section",
+    ".sectors-section",
+    ".process",
+    ".structure",
+    ".risk-section",
+    ".leadership",
+    ".disclosures",
+    ".contact-section",
+    ".site-footer",
+  ].join(", "));
+
+  if (typeof IntersectionObserver === "function") {
+    const sectionObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        entry.target.classList.toggle("section-in-view", entry.isIntersecting);
+      });
+    }, { threshold: 0.08, rootMargin: "0px 0px -8% 0px" });
+    animatedSections.forEach((section) => sectionObserver.observe(section));
+  } else {
+    animatedSections.forEach((section) => section.classList.add("section-in-view"));
+  }
+
+  document.querySelectorAll(".hero h1, .section-title").forEach(splitTextForReveal);
+
+  gsap.set(".hero-copy > *, .hero-regions", { opacity: 0, y: 24, filter: "blur(8px)" });
+  gsap.set(".hero-background", { scale: 1.035 });
+  gsap.set(".hero h1 .split-word-inner", { yPercent: 115, rotateX: -24, filter: "blur(6px)", transformOrigin: "50% 100%" });
+
+  gsap.timeline({
+    defaults: { ease: "power3.out" },
+    scrollTrigger: {
+      trigger: ".hero",
+      start: "top 82%",
+      once: true,
+    },
+  })
+    .to(".hero-background", { opacity: 1, scale: 1, duration: 1.35 })
+    .to(".hero-copy > *, .hero-regions", { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.82, stagger: 0.09 }, 0.12)
+    .to(".hero h1 .split-word-inner", {
+      yPercent: 0,
+      rotateX: 0,
+      filter: "blur(0px)",
+      opacity: 1,
+      duration: 0.95,
+      stagger: 0.032,
+      ease: "power3.out",
+    }, 0.3);
+
+  gsap.to(".hero-background", {
+    yPercent: 10,
+    ease: "none",
+    scrollTrigger: {
+      trigger: ".hero",
+      start: "top top",
+      end: "bottom top",
+      scrub: true,
+    },
+  });
+
+  document.querySelectorAll(".section-title").forEach((title) => {
+    gsap.set(title.querySelectorAll(".split-word-inner"), {
+      yPercent: 115,
+      rotateX: -18,
+      filter: "blur(5px)",
+      opacity: 0,
+      transformOrigin: "50% 100%",
+    });
+    gsap.to(title.querySelectorAll(".split-word-inner"), {
+      yPercent: 0,
+      rotateX: 0,
+      filter: "blur(0px)",
+      opacity: 1,
+      duration: 0.82,
+      stagger: 0.028,
+      ease: "power3.out",
+      scrollTrigger: {
+        trigger: title,
+        start: "top 82%",
+        once: true,
+      },
+    });
+  });
+
+  const revealTargets = [
+    ".section-label",
+    ".overview-copy > *",
+    ".market-card",
+    ".map-visual",
+    ".strategy-diagram",
+    ".company-slider",
+    ".principle-block",
+    ".sectors-intro",
+    ".sector-card",
+    ".no-list",
+    ".process-steps article",
+    ".process-aside > *",
+    ".structure-grid > *",
+    ".risk-statement",
+    ".risk-grid > *",
+    ".leader-card",
+    ".disclosure-grid > *",
+    ".contact-layout > *",
+  ];
+
+  revealTargets.forEach((selector) => {
+    document.querySelectorAll(selector).forEach((target, index) => {
+      gsap.from(target, {
+        y: 34,
+        scale: 0.985,
+        filter: "blur(5px)",
+        opacity: 0,
+        duration: 0.82,
+        delay: Math.min(index % 5, 4) * 0.06,
+        ease: "power3.out",
+        scrollTrigger: {
+          trigger: target,
+          start: "top 86%",
+          once: true,
+        },
+      });
+    });
+  });
+
+  document.querySelectorAll(".city-image, .map-visual img").forEach((image) => {
+    image.classList.add("image-reveal");
+    gsap.fromTo(image,
+      { clipPath: "inset(0 0 100% 0)", y: 24, scale: 1.04 },
+      {
+        clipPath: "inset(0 0 0% 0)",
+        y: 0,
+        scale: 1,
+        duration: 1.05,
+        ease: "power3.out",
+        scrollTrigger: { trigger: image, start: "top 84%", once: true },
+      },
+    );
+  });
+
+  gsap.utils.toArray(".metric-card").forEach((card) => {
+    gsap.from(card, {
+      y: 16,
+      opacity: 0,
+      duration: 0.65,
+      stagger: 0.08,
+      ease: "power2.out",
+      scrollTrigger: {
+        trigger: card,
+        start: "top 90%",
+        once: true,
+        onEnter: () => {
+          const counter = card.querySelector("[data-counter]");
+          if (counter && !counter.dataset.counted) {
+            counter.dataset.counted = "true";
+            animateMetricCounter(counter);
+          }
+        },
+      },
+    });
+  });
+
+  if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+    document.querySelectorAll(".button, .nav-cta").forEach((button) => {
+      button.classList.add("magnetic");
+      button.addEventListener("pointermove", (event) => {
+        const rect = button.getBoundingClientRect();
+        const x = event.clientX - rect.left - rect.width / 2;
+        const y = event.clientY - rect.top - rect.height / 2;
+        gsap.to(button, { x: x * 0.14, y: y * 0.14, duration: 0.35, ease: "power2.out" });
+      });
+      button.addEventListener("pointerleave", () => {
+        gsap.to(button, { x: 0, y: 0, duration: 0.5, ease: "elastic.out(1, .4)" });
+      });
+    });
+
+    document.querySelectorAll("[data-tilt], .leader-card, .market-card, .sector-card").forEach((card) => {
+      card.setAttribute("data-tilt", "");
+      card.addEventListener("pointermove", (event) => {
+        const rect = card.getBoundingClientRect();
+        const rotateY = ((event.clientX - rect.left) / rect.width - 0.5) * 5;
+        const rotateX = ((event.clientY - rect.top) / rect.height - 0.5) * -5;
+        gsap.to(card, { rotateX, rotateY, y: -3, transformPerspective: 900, duration: 0.25, ease: "power2.out" });
+      });
+      card.addEventListener("pointerleave", () => {
+        gsap.to(card, { rotateX: 0, rotateY: 0, y: 0, duration: 0.55, ease: "power3.out" });
+      });
+    });
+  }
+
+  document.querySelectorAll('a[href^="#"]').forEach((link) => {
+    link.addEventListener("click", (event) => {
+      const target = document.querySelector(link.getAttribute("href"));
+      if (!target) return;
+      event.preventDefault();
+
+      const curtain = document.querySelector(".page-transition");
+      gsap.set(curtain, { visibility: "visible" });
+      gsap.timeline()
+        .to(curtain, { y: "0%", duration: 0.28, ease: "power2.inOut" })
+        .to(curtain.querySelector("span"), { scaleX: 1, duration: 0.18 }, "<")
+        .add(() => {
+          if (lenis) {
+            lenis.scrollTo(target, { offset: -24, duration: 1 });
+          } else {
+            target.scrollIntoView({ behavior: "smooth" });
+          }
+          history.pushState(null, "", link.getAttribute("href"));
+        })
+        .to(curtain.querySelector("span"), { scaleX: 0, duration: 0.12 })
+        .to(curtain, { y: "-101%", duration: 0.32, ease: "power2.inOut" })
+        .set(curtain, { visibility: "hidden", y: "101%" });
+    });
+  });
+
+  window.addEventListener("resize", () => window.ScrollTrigger.refresh());
+}
+
+initializePremiumMotion();
